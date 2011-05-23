@@ -1,0 +1,31 @@
+//
+// Code to discard kernel startup data
+//
+	#ifdef __cplusplus
+		extern "C" 
+		{
+	#endif 
+
+extern char dc_start[], dc_end[], dd_start[], dd_end[];
+
+	#ifdef __cplusplus
+		}
+	#endif
+
+// unmap (dc_end - dc_start) bytes at virtual address dc_start
+unmap_mem(dc_start, dc_end - dc_start);
+unmap_mem(dd_start, dd_end - dd_start);
+
+
+
+
+
+//
+// Code to invalidate a page table or directory
+//
+
+static __inline__
+void pgFlushOneTlb(void *m)
+{
+  asm volatile("invlpg %0"::"m" (*m));
+}

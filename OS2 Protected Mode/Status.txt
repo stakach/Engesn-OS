@@ -1,0 +1,49 @@
+Kernel:
+	Updates:
+
+	 * 05  8 03  - Keyboard class now supports programming of the F Keys
+	 * 04  8 03  - Keyboard interrupt handler now determines key pressed				(0.03)
+			- getch() now works
+			- Updated DateTime, now uses inheritance
+	 * 03  8 03  - Added a small keyboard interrupt handler
+			- Misc code structure updates
+			- set_vector allows different options for interrupts (eg. RING_3)
+			- Re-named kernel to PL (PK is a real mode OS, PL is one step up)
+			- disable_irq added
+	 * 02  8 03  - Fixed GPE on 'IRET'								(0.02)
+			- Updated assert code to be more helpful
+			- set_vector and enable_irq now only need the function name
+			- IDT now filled with appropriate interrupt functions
+	 * 31  7 03  - Loaded IDT without reliance on asm						(0.01)
+			- Interrupt class added
+			- Default int handlers created
+			- All screen manipulation stuff is now dynamic not static
+			- Screen resolution is now 80x50, up from 80x25
+	 * 25  6 03  - Video Code optimised
+			- Restructured the way the OS starts up
+	 * 24  6 03  - Engesn OS2 Development starts		 					(0.00)
+			- Engesn OS1 code used in the development of C++ P-Mode kernel
+			- Restart functions modified for P-Mode. Old OS1 code required 'far *'
+			- Static constructor and deconstructor support code implemented
+
+
+
+	To Do:
+	 * multi-tasking
+	 * Memory management
+	 * VGA screen draw functions
+	 * Device type detection
+	 * Driver implementation
+	 * external code execution
+	 * support for subsystems
+	 * File type support (exe, com, ect.)
+	 * Standard code library and compiler support
+
+
+
+Bootstrap:
+	Updates:
+	
+	 * 31  7 03  - Changes screen size to 80x50, up from 80x25
+			- Selects 'big' cursor
+

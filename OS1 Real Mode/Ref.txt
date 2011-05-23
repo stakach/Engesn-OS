@@ -1,0 +1,68 @@
+References:
+
+
+
+Sound stuff:---
+http://courses.ece.uiuc.edu/ece291/books/labmanual/io-devices-speaker.html
+
+Video stuff:---
+http://osdev.berlios.de/tty.html
+http://atrevida.comprenica.com/atrtut07.html   -   writing to the screen in vga
+
+
+Keyboard Stuff:---
+http://www.geocities.com/SiliconValley/Vista/6552/kbdleds.html
+http://www.nondot.org/sabre/os/files/HCI/KeyboardFAQ.txt
+http://www.c-for-dummies.com/lessons/bonus/07/
+---
+
+http://www.bettendorf-germany.de/htmleng/osdev.htm
+http://my.execpc.com/~geezer/osd/cons/   -  Console information
+http://www.nondot.org/sabre/os/articles/TheBootProcess/  -  Bootstrap information, Primitive Fat Drivers
+http://www.manningjames.com/college/sem2/fat12.htm   -   Fat12 fs information
+http://www.maverick-os.dk/FileSystemFormats/FAT16_FileSystem.html   -   Fat16, Fat32 fs information, bootstrap info.
+http://www.dftech.cwc.net/osdev/   -   Fat formating ect.
+
+
+http://ojos.sourceforge.net/tutorials.html   -   OS Design
+http://www.csee.umbc.edu/~plusquel/310/   -   Notes and code for different devices, io and iso standards
+http://myfileformats.com/   -   How to read and use different file formats
+
+
+Enabling Gate A20 and Keyboard Reset
+and General Purpose I/O Options
+By Bob Gross and Carl Schooley    -   Book, Enabling Hi-Memory
+
+
+Making plain binary files using a C compiler (i386+)
+Cornelis Frank    -    Book, compiling methods
+
+
+The Fat File System
+Galen C. Hunt   -   Book, VFat extension to Fat 12,16,32 file systems
+
+
+An Operating
+Systems
+Vade Mecum
+Raphael A. Finkel
+University of Wisconsin at Madison   -   Book, OS Design, Uses, Ideas. Teaches OS conventions and control.
+
+
+
+MMURTL V1.0
+Richard A. Burgess   -   Book, Story of how his pm mt OS developed. Includes code and complete disscussion on how and why.
+
+
+
+Realtime Operating Systems
+Concepts and Implementation of Microkernels
+for Embedded Systems
+Dr. Jürgen Sauermann, Melanie Thelen     -     Book, Different angle on OS design towards realtime processing of info.
+
+
+
+Real Time Clock VIA Technologies, Inc.    -   book, programming with a clock (time-slice control)
+
+
+

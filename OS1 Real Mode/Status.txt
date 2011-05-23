@@ -1,0 +1,131 @@
+Kernel:
+	Updates:
+	 * 02  8 03  - vect.c now holds code to re-direct interrupts					(0.10)
+	 * 28  6 03  - Screen resolution is now 80x50, up from 80x25					(0.09)
+			- All screen manipulation stuff is now dynamic not static
+			- The version number is now stored as a short int
+			- cls now moves the cursor to the bottom of the screen
+			- Screen variables are now defined globals
+			- Fixed getch(). Now returns correct non-ascii characters
+	 * 23  6 03  - Updated k_main() for a more structured startup					(0.08)
+			- Devices.c now prints floppy drives correctly
+			- removed newline in assert()
+			- Reworked Keyboard.c, now faster and smaller
+			- Now compiles with no errors or warnings (dispIO.c fixed)
+	 * 14  6 03  - Updated dispIO.c for readability
+			- Documentation update
+	 *  9  6 03  - Get date function now detects the century
+			- Console date function now displays long year
+	 *  3  6 03  - Memory is now detected in c code not asm
+			- Devices.c gets memory sizes from cmos
+			- cmos.c modified to return proper memory sizes
+	 * 27  5 03  - poke and peek functions now #defines not actual code
+			- Removed cfunc.c as now redundant
+	 * 26  5 03  - Implemented poke and peek functions
+			- Added cfunc.c to hold c code support functions
+			- Updated devices.c Now detects the number of HD & FD Drives
+	 * 25  5 03  - Implemented devices.c								(0.07)
+			- Now detects floppy drives and displays them on startup
+			- Added Define's for MK_FP
+	 * 24  5 03  - Added screen control function for turning monitor on and off
+			- Console now has 'screensav' command
+			- Implemented getch that does not use interrupts for long periods
+			- Documentation updated
+	 * 14  5 03  - Kernel no longer halts if high memory is not avaliable.
+			- Updated some documentation
+			- New window added for system time
+			- Status bar now in use
+			- Text cursor can now be hidden from the screen
+	 * 13  5 03  - Implemented text windows								(0.06)
+			- dispIO.c completely updated to support windows
+			- Added a status bar (not in use)
+			- 'date long' now displays the correct day
+	 * 12  5 03  - Fixed backspace character code int tty_putc. Now sets x value
+			- Console buffer now holds 256 chars
+			- Updated console documentation
+	 *  8  5 03  - Console now has 'time' and 'date' commands
+			- Buffer is now reset after every command
+			- 'help' command updated to include changes
+	 *  7  5 03  - Documentation update								(0.05)
+			- 'help' command now includes 'play' and 'kbrate'
+			- Updated keyboard functions as they didn't work on all computers
+			- Misc visual updates
+			- 'mem' command now works as it should
+	 *  6  5 03  - Keyboard functions now working
+			- Ability to change keyboard type rate in console
+			- Kernel sets up keyboard settings on startup
+	 *  5  5 03  - Added playString function which plays tunes
+			- Implemented 'play' command in console for playing tunes.
+	 *  4  5 03  - Can now control the pitch of the beep.
+	 *  3  5 03  - Internel Speaker control implemented
+			- Created text.c, speaker.c and renamed TextOut.c to dispIO.c
+			- Easier to select colours for text output
+			- Beeps when reached the end of the buffer in console
+			- Video setup updated
+			- Move cursor no longer relys on the BIOS
+			- Implemented a delay function
+	 * 26  4 03  - Console restartIt function parameters can be in any order.
+	 * 25  4 03  - Shutdown function re-worked. Now supports Warm and Cold boots
+			- Console can now take simple parameters
+			- Deleted redundant code to reduce OS size
+	 * 22  4 03  - Implemented direct video access							(0.04)
+			- Full colour enabled console
+			- Video setup compacted and faster
+			- Reduced reliance on assembly code and BIOS
+			- Console now has a custom font and cursor
+			- No longer displays non-printable ASCII characters
+	 * 20  4 03  - waitKey function implemented for detecting a keypress without using the bios.
+	 * 16  3 03  - get_time and date function implemented.
+	 * 14  3 03  - Implemented keyboard functions							(0.03)
+			- Moved all related functions into seperate files. eg video.c, keyboard.c
+			- Reduced shutdown code
+	 * 13  3 03  - cls function now much faster (Uses BIOS instead of scrolling)
+			- Updated documentation.
+	 *  9  3 03  - Detects video card on startup (direct vid mem access *later implementation*)
+			- faster shutdown routine
+	 * 23  2 03  - restart, shutdown functions now C-Code 						(0.02)
+	 * 22  2 03  - outport, inport, disable, enable implemented
+	 * 21  2 03  - Enables A20 Gate
+	 *  5  1 03  - Implemented very simple text console 						(0.01)
+	 *  3  1 03  - Added various screen draw functions
+	 *  1  1 03  - Restart and shutdown functions implemented 					(0.00)
+
+
+
+	To Do:
+	 * multi-tasking
+	 * Memory management
+	 * VGA screen draw functions
+	 * Device type detection
+	 * Driver implementation
+	 * external code execution
+	 * support for subsystems
+	 * File type support (exe, com, ect.)
+	 * Standard code library and compiler support
+
+
+
+Boot Loader:
+	Updates:
+	 * 17 2 03  - Now checks processor type and current mode 	(Ver 1.02)
+	 * 8 12 02  - Displays memory statistics and updated interface 	(Ver 1.01)
+	 * 4 9 02   - Fixed error when jumping to loaded module 	(Ver 1.00)
+
+	To Do:
+	 * Implement 'Big' real mode
+	 * Load kernel to 1mb mark
+	 * Support for other file systems
+
+
+
+Boot Straps:
+	Updates:
+	 * xx xx xx - Implemented a basic Fat12 bootstrap
+	 * None
+
+	To Do:
+	 * Fat12 bootstrap must use entirely 16bit registers
+	 * Implement Fat16 and Fat32 bootstraps
+
+
+

@@ -1,0 +1,12 @@
+; bootf.lnk  JLOC control file for bootp.asm
+; Version 1.0, Apr 14, 1999
+; Sample code
+; by John S. Fine  johnfine@erols.com
+; I do not place any restrictions on your use of this source code
+; I do not provide any warranty of the correctness of this source code
+;_____________________________________________________________________________
+
+ALL:
+   bootf.obj
+BOOT: 0 7C00 0
+   *

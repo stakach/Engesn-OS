@@ -1,0 +1,4 @@
+# Entry 0:
+title   Invalid Kernel
+root    (fd0)
+kernel  /boot/kernel.bin

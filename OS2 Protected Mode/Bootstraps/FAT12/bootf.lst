@@ -1,0 +1,705 @@
+     1                                  ; bootf.asm  FAT12 floppy bootstrap for protected mode image
+     2                                  ; Version 2.0, May 1, 1999
+     3                                  ; Sample code
+     4                                  ; by John S. Fine  johnfine@erols.com
+     5                                  ; I do not place any restrictions on your use of this source code
+     6                                  ; I do not provide any warranty of the correctness of this source code
+     7                                  ;_____________________________________________________________________________
+     8                                  ;
+     9                                  ; Documentation:
+    10                                  ;
+    11                                  ;   1)  Most of the documentation is in comments at the END of this file.
+    12                                  ;   2)  Some is in the read.me file that came with this file.
+    13                                  ;   3)  In the comments within the source code are several uses of {}, each
+    14                                  ;       of these indicates a section of documentation at the end of this file
+    15                                  ;       which applies to that part of the source code.
+    16                                  ;   4)  The major way I reduced code size was to rely on left-over values in
+    17                                  ;       registers and/or to initialize registers at points where doing so was
+    18                                  ;       cheap.  To make that understandable, there are several lines beginning
+    19                                  ;       with either ";>" or ";>>".  These lines describe the register contents
+    20                                  ;       at that point in the code.  ";>" indicates that the value is required
+    21                                  ;       by the next section of code.  ";>>" indicates that the value passes
+    22                                  ;       through the next section unmodified and is needed later.
+    23                                  ;    5) I made this code by modifying my bootp example.  If something doesn't
+    24                                  ;       make sense here, maybe comparison to the other version will help.
+    25                                  ;_____________________________________________________________________________
+    26                                  ;
+    27                                  ; Limitations:
+    28                                  ;
+    29                                  ;    For simplicity, I made several assumptions about the environment.  Some
+    30                                  ; of those may need to be expanded in a future version.  Except for the first,
+    31                                  ; they are all things that could be checked by a "SYS" program that installs
+    32                                  ; this bootstrap.  In general it makes more sense (where possible) for a SYS
+    33                                  ; program to check compatibility issues than for a bootstrap to check them
+    34                                  ; itself.
+    35                                  ;
+    36                                  ;    If these limits are violated, this code simply bombs.  It does not check
+    37                                  ; the limits nor display error messages.
+    38                                  ;
+    39                                  ; 1) Runs only on a 386+
+    40                                  ; 2) The FAT structure must be the first thing on the drive (no partitions).
+    41                                  ;    It just uses "reserved" sectors before the FAT, not "hidden" etc.
+    42                                  ; 3) The sector size must be 512 bytes
+    43                                  ; 4) There are less than 256 sectors per fat (safe, since FAT12 has less than
+    44                                  ;    4096*1.5 bytes per FAT).
+    45                                  ; 5) LBN of root directory less than 65536 (safe in unpartitioned FAT12)
+    46                                  ;_____________________________________________________________________________
+    47                                  
+    48                                  	%include "gdt.inc"
+    49                              <1> ; gdt.inc   symbols and macros for building descriptors
+    50                              <1> ; Version 2.4, Nov 29, 1998
+    51                              <1> ; Sample code
+    52                              <1> ; by John S. Fine  johnfine@erols.com
+    53                              <1> ; I do not place any restrictions on your use of this source code
+    54                              <1> ; I do not provide any warranty of the correctness of this source code
+    55                              <1> ;_____________________________________________________________________________
+    56                              <1> ;
+    57                              <1> ;  This gdt.inc uses features that I added to NASM.
+    58                              <1> ;  As I write this, the only version of NASM with those features is available
+    59                              <1> ;  on my web page.
+    60                              <1> ;  http://www.erols.com/johnfine/#nasmj
+    61                              <1> ;
+    62                              <1> ;  This gdt.inc will also assemble correctly with standard NASM version 0.97
+    63                              <1> ;  (It tests for a feature I added to NASM and does things a different way
+    64                              <1> ;   if that feature is missing).  However, using standard NASM 0.97 every
+    65                              <1> ;  use of the desc macro inside the gdt must define a selector.  With my
+    66                              <1> ;  NASM, selectors may be defined or skipped on each use of desc.
+    67                              <1> ;_____________________________________________________________________________
+    68                              <1> ;
+    69                              <1> ; The desc macro pieces together a segment descriptor.
+    70                              <1> ;
+    71                              <1> ; desc  offset, selector, control   ;For gate descriptors
+    72                              <1> ; desc  base, limit, control	    ;For all other descriptors
+    73                              <1> ;
+    74                              <1> ;  base    is the full 32 bit base address of the segment
+    75                              <1> ;  limit   is one less than the segment length in 1 or 4K byte units
+    76                              <1> ;  control the sum of all the "D_" equates which apply (for call gates, you
+    77                              <1> ;          also add the "parameter dword count" to flags).
+    78                              <1> ;
+    79                              <1> ;  Descriptors are built in a simplified format at assembly time, and a
+    80                              <1> ;  special symbol is defined to tell JLOC to convert to correct format.
+    81                              <1> ;  See notes below.
+    82                              <1> ;
+    83                              <1> ;  There is special handling for any label that occurs on the line with
+    84                              <1> ;  the desc macro, for example:
+    85                              <1> ;
+    86                              <1> ;  flat_code:  desc  0, 0xFFFFF, D_CODE + D_READ + D_BIG + D_BIG_LIM
+    87                              <1> ;
+    88                              <1> ;  This defines a standard flat code segment with a base of zero.  The
+    89                              <1> ;  symbol flat_code is defined as the selector for this descriptor, not
+    90                              <1> ;  the address of the descriptor.  Thus you could do:
+    91                              <1> ;
+    92                              <1> ;  jmp  flat_code:entry_point
+    93                              <1> ;
+    94                              <1> ;  or define an IDT entry point as:
+    95                              <1> ;
+    96                              <1> ;  desc  service_GPF, flat_code, D_TRAP
+    97                              <1> ;
+    98                              <1> ;  The support for defining the selectors must be set up by using something
+    99                              <1> ;  like the start_gdt macro.
+   100                              <1> ;
+   101                              <1> ;  The start_gdt macro also fills in the null descriptor with a special
+   102                              <1> ;  descriptor that can be used by the lgdt instruction.
+   103                              <1> ;
+   104                              <1> ;  The end_gdt macro defines the limit value needed by start_gdt and also
+   105                              <1> ;  releases the NASM context used for defining selectors
+   106                              <1> ;_____________________________________________________________________________
+   107                              <1> 
+   108                              <1> ;Each descriptor should have exactly one of next 8 codes to define the type of
+   109                              <1> ;descriptor
+   110                              <1> D_LDT		EQU	 200h	;LDT segment
+   111                              <1> D_TASK		EQU	 500h	;Task gate
+   112                              <1> D_TSS		EQU	 900h	;TSS
+   113                              <1> D_CALL		EQU	0C00h	;386 call gate
+   114                              <1> D_INT		EQU	0E00h	;386 interrupt gate
+   115                              <1> D_TRAP		EQU	0F00h	;386 trap gate
+   116                              <1> D_DATA		EQU	1000h	;Data segment
+   117                              <1> D_CODE		EQU	1800h	;Code segment
+   118                              <1> 
+   119                              <1> ;Descriptors may include the following as appropriate:
+   120                              <1> D_DPL3		EQU	6000h	;DPL3 or mask for DPL
+   121                              <1> D_DPL2		EQU	4000h
+   122                              <1> D_DPL1		EQU	2000h
+   123                              <1> D_PRESENT	EQU	8000h	;Present
+   124                              <1> D_NOT_PRESENT	EQU	8000h	;Not Present
+   125                              <1> 				;Note, the PRESENT bit is set by default
+   126                              <1> 				;Include NOT_PRESENT to turn it off
+   127                              <1> 				;Do not specify D_PRESENT
+   128                              <1> 
+   129                              <1> ;Segment descriptors (not gates) may include:
+   130                              <1> D_ACC		EQU	 100h	;Accessed (Data or Code)
+   131                              <1> 
+   132                              <1> D_WRITE		EQU	 200h	;Writable (Data segments only)
+   133                              <1> D_READ		EQU	 200h	;Readable (Code segments only)
+   134                              <1> D_BUSY		EQU	 200h	;Busy (TSS only)
+   135                              <1> 
+   136                              <1> D_EXDOWN	EQU	 400h	;Expand down (Data segments only)
+   137                              <1> D_CONFORM	EQU	 400h	;Conforming (Code segments only)
+   138                              <1> 
+   139                              <1> D_BIG		EQU	  40h	;Default to 32 bit mode (USE32)
+   140                              <1> D_BIG_LIM	EQU	  80h	;Limit is in 4K units
+   141                              <1> 
+   142                              <1> %macro test_for_my_00_feature 0
+   143                              <1> %ifnnum	%00
+   144                              <1> %define my_00_feature
+   145                              <1> %endif
+   146                              <1> %endm
+   147                              <1> test_for_my_00_feature
+   148                              <2> %ifnnum	
+   149                              <2> %define my_00_feature
+   150                              <2> %endif
+   151                              <1> 
+   152                              <1> ;  NASM version 0.97 has some bugs in putting %macro definitions inside %if
+   153                              <1> ;  constructs.  I sidestep that problem by putting the %macro definitions in
+   154                              <1> ;  %include files.
+   155                              <1> ;_____________________________________________________________________________
+   156                              <1> 
+   157                              <1> %ifdef my_00_feature
+   158                              <1> 
+   159                              <1> %include "gdt_new.inc"
+   160                              <2> ; gdt_new.inc   symbols and macros for building descriptors
+   161                              <2> ; Version 2.3, Mar 16, 1998
+   162                              <2> ; Sample code
+   163                              <2> ; by John S. Fine  johnfine@erols.com
+   164                              <2> ; I do not place any restrictions on your use of this source code
+   165                              <2> ; I do not provide any warranty of the correctness of this source code
+   166                              <2> ;_____________________________________________________________________________
+   167                              <2> ;
+   168                              <2> ;  Use gdt.inc to include this file.
+   169                              <2> ;  This section was split out of gdt.inc because of a bug in NASM version
+   170                              <2> ;  0.97 handling of macro definitions within an %if.
+   171                              <2> ;
+   172                              <2> ;  This varient of the macro definitions is used if my %00 feature is present
+   173                              <2> ;  in NASM
+   174                              <2> ;_____________________________________________________________________________
+   175                              <2> 
+   176                              <2> %macro start_gdt 0
+   177                              <2> %push table
+   178                              <2> %$startoftable:
+   179                              <2> 	dw	%$limitoftable
+   180                              <2> 	dd	%$startoftable
+   181                              <2> 	dw	0
+   182                              <2> %endmacro
+   183                              <2> 
+   184                              <2> %macro end_gdt 0
+   185                              <2> %$limitoftable	equ	$-%$startoftable-1
+   186                              <2> %pop
+   187                              <2> %endmacro
+   188                              <2> 
+   189                              <2> %macro desc 3
+   190                              <2> %ifid %00
+   191                              <2> %00 equ $-%$startoftable
+   192                              <2> %endif
+   193                              <2> 	GLOBAL	?fixD%%jloc
+   194                              <2> ?fixD%%jloc:
+   195                              <2> 	dd	(%2) + ( ( (%3) ^ D_PRESENT ) << 16 ) , (%1)
+   196                              <2> %endmacro
+   197                              <2> 
+   198                              <1> 
+   199                              <1> %else
+   200                              <1> 
+   201                              <1> %include "gdt_old.inc"
+   202                              <1> 
+   203                              <1> %endif
+   204                              <1> ;-----------------------------------------------------------------------------
+   205                              <1> ;  Note:
+   206                              <1> ;
+   207                              <1> ;  In true descriptors the offset, base and limit fields are each broken into
+   208                              <1> ;  two parts.  It is often useful to define descriptors for which these fields
+   209                              <1> ;  (especially offset) are not known until link time.  Since the assembler
+   210                              <1> ;  doesn't know the final value, it can't split the fields correctly.
+   211                              <1> ;
+   212                              <1> ;  To work around this problem, I have the desc macro store the parts of each
+   213                              <1> ;  descriptor as contiguous fields, rather than in the correct Intel sequence.
+   214                              <1> ;  The assembler can use standard "fixup" requests to indicate any values that
+   215                              <1> ;  are not known at assembly time.  You must link with JLOC.  After applying
+   216                              <1> ;  the fixups, JLOC will rearrange the descriptor into the correct sequence
+   217                              <1> ;
+   218                              <1> ;  There are two basic formats for descriptors, one for gates, one for
+   219                              <1> ;  everything else.
+   220                              <1> ;
+   221                              <1> ;  A gate is identified by JLOC as any descriptor whose simplified format has
+   222                              <1> ;  bit 26 set and bit 28 clear.
+   223                              <1> ;
+   224                              <1> ;  For a gate, the following rearrangement occurs:
+   225                              <1> ;
+   226                              <1> ;  subField             Simplified location   Final location
+   227                              <1> ;  ------------------   -------------------   --------------
+   228                              <1> ;  Selector[0..15]            0..15               16..31
+   229                              <1> ;  Minor control bits        16..23               32..39
+   230                              <1> ;  Major control bits        24..31               40..47
+   231                              <1> ;  Offset[0..15]             32..47                0..15
+   232                              <1> ;  Offset[16..31]            48..63               48..63
+   233                              <1> ;
+   234                              <1> ;  For non-gates the following rearrangement occurs:
+   235                              <1> ;
+   236                              <1> ;  subField             Simplified location   Final location
+   237                              <1> ;  ------------------   -------------------   --------------
+   238                              <1> ;  Limit[0..15]               0..15                0..15
+   239                              <1> ;  Limit[16..19]             16..19               48..51
+   240                              <1> ;  Minor control bits        20..23               52..55
+   241                              <1> ;  Major control bits        24..31               40..47
+   242                              <1> ;  Base[0..23]               32..55               16..39
+   243                              <1> ;  Base[24..31]              56..63               56..63
+   244                              <1> ;
+   245                              <1> ;  The last parameter to the desc macro contains all the control bits
+   246                              <1> ;  combined.  It is generated by adding together the appropriate
+   247                              <1> ;  D_ constants.  For all descriptors, it has the major control bits in D_
+   248                              <1> ;  bits 8 to 15.  The minor control bits are in either D_ bits 0 to 7 or bits
+   249                              <1> ;  4 to 7 depending on the type of descriptor.
+   250                              <1> ;_____________________________________________________________________________
+   251                              <1> 
+   252                                  
+   253                                  	struc	BB		;FAT Boot block
+   254 00000000 <res 0000000D>          		resb	0xD	;Things we ignore
+   255 0000000D <res 00000001>          BB_clu		resb	1	;Sectors per cluster
+   256 0000000E <res 00000002>          BB_res		resw	1	;Reserved sectors
+   257 00000010 <res 00000001>          BB_fats		resb	1	;Number of FATs
+   258 00000011 <res 00000002>          BB_root		resw	1	;Root directory entries
+   259 00000013 <res 00000003>          		resb	3	;Things we ignore
+   260 00000016 <res 00000002>          BB_fat		resw	1	;Sectors per fat
+   261 00000018 <res 00000002>          BB_sec		resw	1	;Sectors per track
+   262 0000001A <res 00000002>          BB_head		resw	1	;Heads
+   263                                  	endstruc
+   264                                  
+   265                                  SEGMENT	START USE16
+   266                                  
+   267                                  ;>   cs = 0
+   268                                  ;>>  dl = drive we were booted from
+   269                                  
+   270 00000000 EB3C                    boot:	jmp short start			;Standard start of boot sector
+   271 00000002 90                      	nop
+   272 00000003 654E4745534E6F73        	bs_oem_name 		db 'eNGESNos'	;OEM identification
+   273 0000000B 0002                    bs_bytes_per_sect 	dw 0x200
+   274 0000000D 01                      bs_sects_per_clust 	db 1
+   275 0000000E 0100                    bs_reserved_sects 	dw 1
+   276 00000010 02                      bs_num_fats 		db 2
+   277 00000011 E000                    bs_root_dir_entries 	dw 0xE0
+   278 00000013 400B                    bs_sects 		dw 0xB40
+   279 00000015 F0                      bs_media 		db 0xF0
+   280 00000016 0900                    bs_fat_sects 		dw 9
+   281 00000018 1200                    bs_sects_per_track 	dw 0x12
+   282 0000001A 0200                    bs_heads 		dw 2
+   283 0000001C 00000000                bs_hidden_sec	 	dd 0
+   284 00000020 00000000                bs_huge_sects		dd 0
+   285 00000024 00                      bs_drive_num		db 0
+   286 00000025 00                      bs_reserved 		db 0
+   287 00000026 29                      bs_boot_signature 	db 0x29
+   288 00000027 007C0000                bs_volume_id 		dd 0x00007C00
+   289 0000002B 456E5C4F533120424F-     bs_volume_label 	db "En\OS1 BOOT" 	; Volume Label
+   290 00000034 4F54               
+   291 00000036 4641543132202020        bs_fs_type 		db "FAT12   " 	; File System type
+   292                                  
+   293                                  start:	
+   294                                  
+   295                                  ; set 80x50 text mode and 8x8 font
+   296 0000003E B81211                  	mov ax,1112h
+   297 00000041 30DB                    	xor bl,bl
+   298 00000043 CD10                    	int 10h
+   299                                  
+   300 00000045 B80001                   	mov ax,0x0100           ;Set big cursor
+   301 00000048 B500                            mov ch,0
+   302 0000004A B10F                            mov cl,0x0f
+   303 0000004C CD10                            int 0x10
+   304                                  
+   305                                  
+   306 0000004E FA                      	cli				;{0}
+   307 0000004F 2E0F0116[DC01]          	lgdt	[cs:gdt]		;Load GDT
+   308 00000055 0F20C1                  	mov	ecx, CR0		;Switch to protected mode
+   309 00000058 41                      	inc	cx
+   310 00000059 0F22C1                  	mov	CR0, ecx		;{5}
+   311 0000005C E464                    .5:	in	al, 0x64		;Enable A20 {4A}
+   312 0000005E A802                    	test	al, 2
+   313 00000060 75FA                    	jnz	.5
+   314 00000062 B0D1                    	mov	al, 0xD1
+   315 00000064 E664                    	out	0x64, al
+   316 00000066 E464                    .6:	in	al, 0x64
+   317 00000068 83E002                  	and	ax, byte 2
+   318 0000006B 75F9                    	jnz	.6
+   319 0000006D B0DF                    	mov	al, 0xDF
+   320 0000006F E660                    	out	0x60, al
+   321                                  
+   322                                  ;>   ah = 0
+   323                                  ;>   dl = drive we were booted from
+   324                                  
+   325 00000071 B010                    	mov	al, flat_data		;Selector for 4Gb data seg
+   326 00000073 8ED8                    	mov	ds, ax			;{2} Extend limit for ds
+   327 00000075 8EC0                    	mov	es, ax			;Extend limit for es
+   328 00000077 49                      	dec	cx			;Switch back to real mode
+   329 00000078 0F22C1                  	mov	CR0, ecx		;{5}
+   330                                  
+   331 0000007B 8816[0000]              	mov	[boot], dl		;Save drive number we came from
+   332 0000007F BC0008                  	mov	sp, 0x800		;{1B}
+   333                                  
+   334 00000082 6631C0                  	xor	eax, eax		;Segment
+   335 00000085 8ED8                    	mov	ds, ax			;
+   336 00000087 8ED0                    	mov	ss, ax
+   337 00000089 8EC4                    	mov	es, sp			;Read directory at 800:0 {1C}
+   338                                  
+   339                                  ;>   eax = 00000000
+   340                                  
+   341 0000008B A0[1000]                	mov	al, [boot+BB_fats]	;Number of FATs
+   342 0000008E F626[1600]              	mul	byte [boot+BB_fat]	;Times size of FAT
+   343 00000092 0306[0E00]              	add	ax, [boot+BB_res]	;Plus Sectors before first FAT
+   344                                  					;eax = LBN of Root directory
+   345 00000096 660FB73E[1100]          	movzx	edi,word [boot+BB_root]	;Root directory entries
+   346 0000009C 57                      	push	di			; used again later
+   347 0000009D 4F                      	dec	di			;Convert to number of sectors
+   348 0000009E C1EF04                  	shr	di, 4			;  16 directory entries per sector
+   349 000000A1 47                      	inc	di
+   350 000000A2 E8CA00                  	call	read_sectors
+   351                                  
+   352                                  ;>  eax  = LBN of root directory
+   353                                  ;>  edi  = length of root directory in sectors
+   354                                  ;>  [sp] = length of root directory in entries
+   355                                  ;>  esi  = 00000000
+   356                                  
+   357 000000A5 66678D2C38              	lea	ebp, [eax+edi]		;ebp = LBN of cluster 2
+   358                                  
+   359 000000AA 5B                      	pop	bx			;Root directory entries
+   360 000000AB 31FF                    	xor	di, di			;Point at directory {1C}
+   361 000000AD BE[D101]                .20:	mov	si, file_name		;Name of file we want
+   362 000000B0 6631C9                  	xor	ecx, ecx
+   363 000000B3 B10B                    	mov	cl, 11
+   364 000000B5 67F3A6                  	a32 rep cmpsb			;Found the file?
+   365 000000B8 7410                    	je	found			;Yes
+   366 000000BA 80C115                  	add	cl, 21			;Offset to next directory entry
+   367 000000BD 6601CF                  	add	edi, ecx		;Advance to next entry
+   368 000000C0 4B                      	dec	bx			;Loop through all entries
+   369 000000C1 75EA                    	jnz	.20
+   370                                  
+   371                                  	;Couldn't find file in directory
+   372                                  boot_error:
+   373                                  disk_error:	
+   374 000000C3 B8070E                  	mov	ax, 0xE07		;{3}
+   375 000000C6 CD10                    	int	10h
+   376 000000C8 EBFE                    	jmp short $
+   377                                  
+   378                                  ;>> ecx   = 00000000
+   379                                  ;> es     = 800
+   380                                  ;> es:edi = Directory entry of file
+   381                                  ;> ebp    = LBN of cluster 2
+   382                                  ;> eax    = 0000????
+   383                                  
+   384 000000CA 2667FF770F              found:	push	word [es:edi+0xF]	;Starting cluster of file
+   385 000000CF 8B3E[1600]              	mov	di, [boot+BB_fat]	;Size of FAT (in sectors)
+   386 000000D3 A1[0E00]                	mov	ax, [boot+BB_res]	;LBN of FAT
+   387 000000D6 E89600                  	call	read_sectors
+   388                                  
+   389 000000D9 BB0040                  	mov	bx, 0x4000
+   390 000000DC 8EC3                    	mov	es, bx			;es = 0x4000
+   391 000000DE 66BF00000C00            	mov	edi, 0x100000-0x40000	;{1D}{4B} One megabyte minus ES base
+   392                                  .10:
+   393                                  
+   394                                  ;>>    ecx = 0000????
+   395                                  ;>    [sp] = Next cluster of file
+   396                                  ;>     esi = 0000????
+   397                                  ;>>    edx = 0000????
+   398                                  ;>  es:edi = Destination address
+   399                                  ;>     ebp = LBN of cluster 2
+   400                                  ;>      ds = 0
+   401                                  
+   402 000000E4 6631C0                  	xor	eax, eax
+   403 000000E7 5E                      	pop	si			;Next cluster of file
+   404 000000E8 89F3                    	mov	bx, si
+   405 000000EA 81FEF80F                	cmp	si, 0xFF8		;Valid cluster?
+   406 000000EE 7329                    	jae	eof			;No: assume end of file
+   407                                  					;Yes: (c-bit set)
+   408 000000F0 D1DB                    	rcr	bx, 1			;bx = 0x8000 + cluster/2
+   409 000000F2 8B18                    	mov	bx, [bx+si]		;Get word containing FAT entry
+   410 000000F4 7303                    	jnc	.11			;Entry is low 12 bits
+   411 000000F6 C1EB04                  	shr	bx, 4			;Entry was high 12 bits
+   412 000000F9 80E70F                  .11:	and	bh, 0xF			;Mask to just 12 bits
+   413 000000FC 53                      	push	bx			;Save cluster after next
+   414 000000FD 57                      	push	di			;Save destination address {7}
+   415 000000FE A0[0D00]                	mov	al, [boot+BB_clu]	;Size of each cluster
+   416 00000101 89C7                    	mov	di, ax			;  (in sectors)
+   417 00000103 4E                      	dec	si
+   418 00000104 4E                      	dec	si
+   419 00000105 66F7E6                  	mul	esi			;Times cluster number minus 2
+   420 00000108 6601E8                  	add	eax, ebp		;Plus LBN of cluster 2	
+   421 0000010B E86100                  	call	read_sectors		;Read that cluster
+   422                                  
+   423                                  ;>     ecx = 0000????
+   424                                  ;>>    edx = 0000????
+   425                                  ;>      di = Clustersize in sectors
+   426                                  ;>     esi = 0
+   427                                  ;>>    ebp = LBN of cluster 2
+   428                                  ;>    [sp] = Bottom 16-bits of destination address {7}
+   429                                  ;>> [sp+2] = Following cluster
+   430                                  ;>      ds = 0
+   431                                  ;>      es = 4000
+   432                                  
+   433 0000010E 89F9                    	mov	cx, di			;Cluster size in sectors
+   434 00000110 86E9                    	xchg	ch, cl			;Cluster size in words
+   435 00000112 5F                      	pop	di			;Restore destination address {7}
+   436 00000113 2667F3A5                	es a32 rep movsw
+   437 00000117 EBCB                    	jmp short .10			;Loop until end of file
+   438                                  
+   439                                  ;>     eax = 0
+   440                                  ;>     edx = 0000????
+   441                                  ;>      bx = 0FF?
+   442                                  
+   443                                  eof:
+   444 00000119 BA009C                  	mov	dx, 0x9C00
+   445 0000011C 8EC2                    	mov	es, dx			;es = 9C00
+   446 0000011E 31FF                    	xor	di, di			;{1E} Address of page tables WRT es
+   447 00000120 B610                    	mov	dh, 4096/256		;edx = 4096
+   448 00000122 B90004                  .10:	mov	cx, 1024
+   449 00000125 B007                    	mov	al, 7
+   450 00000127 66AB                    .20:	stosd
+   451 00000129 6601D0                  	add	eax, edx
+   452 0000012C CD08                    	int	8			;{8}
+   453 0000012E E2F7                    	loop	.20
+   454 00000130 66C1E802                	shr	eax, 2			;{4C} (first time only) 4Mb / 4 = 1Mb
+   455 00000134 F6DB                    	neg	bl			;Done just one page?
+   456 00000136 79EA                    	jns	.10			;Yes: do one more
+   457                                  
+   458 00000138 FA                      	cli				;{6}
+   459                                  
+   460 00000139 66B807C00900            	mov	eax, 0x9C007		;First page tbl pointer in page dir
+   461 0000013F 66AB                    	stosd				;{1H}
+   462 00000141 B8FA07                  	mov	ax, (1024-3)*2
+   463 00000144 91                      	xchg	ax, cx
+   464 00000145 F3AB                    	rep stosw
+   465 00000147 B807D0                  	mov	ax, 0xD007		;0FF800000 page tbl pointer
+   466 0000014A 66AB                    	stosd				;{1F}
+   467 0000014C B4E0                    	mov	ah, 0xE0		;Page directory self pointer
+   468 0000014E 66AB                    	stosd				;{1G}
+   469 00000150 B000                    	mov	al, 0
+   470 00000152 0F22D8                  	mov	CR3, eax		;Set up page directory
+   471 00000155 0F20C0                  	mov	eax, CR0		;Turn on paging and protected mode
+   472 00000158 660D01000080            	or	eax, 0x80000001
+   473 0000015E 0F22C0                  	mov	CR0, eax
+   474 00000161 B110                    	mov	cl, flat_data		;Setup ds and es
+   475 00000163 51                      	push	cx			;{5}
+   476 00000164 1F                      	pop	ds
+   477 00000165 8EC1                    	mov	es, cx
+   478 00000167 66EA000080FF0800        	jmp dword 8:0xFF800000		;Go
+   479                                  	
+   480                                  read_sectors:
+   481                                  ; Input:
+   482                                  ;	EAX = LBN
+   483                                  ;	DI  = sector count
+   484                                  ;	ES = segment
+   485                                  ; Output:
+   486                                  ;	EBX high half cleared
+   487                                  ;	DL = drive #
+   488                                  ;	EDX high half cleared
+   489                                  ;	ESI = 0
+   490                                  ; Clobbered:
+   491                                  ;	BX, CX, DH
+   492                                  
+   493 0000016F 6650                    	push	eax
+   494 00000171 57                      	push	di
+   495 00000172 06                      	push	es
+   496                                  
+   497 00000173 6650                    .10:	push	eax		;LBN
+   498                                  
+   499 00000175 6699                    	cdq			;edx = 0
+   500 00000177 660FB61E[1800]          	movzx	ebx, byte [boot+BB_sec]
+   501 0000017D 66F7F3                  	div	ebx		;EAX=track ;EDX=sector-1
+   502 00000180 89D1                    	mov	cx, dx		;CL=sector-1 ;CH=0
+   503 00000182 28D3                    	sub	bl, dl		;BX = max transfer before end of track
+   504 00000184 39DF                    	cmp	di, bx		;Do we want more than that?
+   505 00000186 7702                    	ja	.20		;Yes, do just this much now
+   506 00000188 89FB                    	mov	bx, di		;No, do it all now
+   507 0000018A 6689DE                  .20:	mov	esi, ebx	;Save count for this transfer.
+   508                                  
+   509 0000018D 41                      	inc	cx		;CL=Sector number
+   510 0000018E 31D2                    	xor	dx, dx
+   511 00000190 8A1E[1A00]              	mov	bl, [boot+BB_head]
+   512 00000194 66F7F3                  	div	ebx		;EAX=cylinder ;EDX=head
+   513                                  
+   514 00000197 88D6                    	mov	dh, dl		;Head
+   515 00000199 8A16[0000]              	mov	dl, [boot]	;Drive
+   516 0000019D 86E8                    	xchg	ch, al		;CH=Low 8 bits of cylinder number; AL=0
+   517 0000019F C1E802                  	shr	ax, 2		;AL[6:7]=High two bits of cylinder
+   518 000001A2 08C1                    	or	cl, al		;CX = Cylinder and sector
+   519                                  
+   520 000001A4 89F0                    	mov	ax, si		;Sector count
+   521 000001A6 B402                    	mov	ah, 2		;Read
+   522 000001A8 31DB                    	xor	bx, bx
+   523 000001AA 50                      	push	ax
+   524 000001AB CD13                    	int	13h
+   525 000001AD 58                      	pop	ax
+   526 000001AE 7306                    	jnc	.30
+   527                                  
+   528 000001B0 CD13                    	int	13h		;If at second you don't succeed, give up
+   529 000001B2 0F820DFF                	jc near	disk_error
+   530                                  
+   531 000001B6 6658                    .30:	pop	eax
+   532 000001B8 6601F0                  	add	eax, esi	;Advance LBN
+   533                                  
+   534 000001BB 56                      	push	si
+   535 000001BC C1E605                  	shl	si, 5
+   536 000001BF 8CC3                    	mov	bx, es
+   537 000001C1 01F3                    	add	bx, si		;Advance segment
+   538 000001C3 8EC3                    	mov	es, bx
+   539 000001C5 5E                      	pop	si
+   540                                  
+   541 000001C6 29F7                    	sub	di, si
+   542 000001C8 77A9                    	ja	.10
+   543                                  
+   544 000001CA 07                      	pop	es
+   545 000001CB 5F                      	pop	di
+   546 000001CC 6658                    	pop	eax
+   547 000001CE 31F6                    	xor	si, si
+   548 000001D0 C3                      	ret	
+   549                                  
+   550 000001D1 4B45524E454C202042-     file_name db 'KERNEL  BIN'
+   551 000001DA 494E               
+   552                                  
+   553                                  gdt	start_gdt		;{9}
+   554                              <1> gdt	:
+   555                              <1> %push table
+   556                              <1> %$startoftable:
+   557 000001DC 1700                <1> 	dw	%$limitoftable
+   558 000001DE [DC010000]          <1> 	dd	%$startoftable
+   559 000001E2 0000                <1> 	dw	0
+   560                                  
+   561                                  flat_code	desc	0, 0xFFBFF, D_CODE+D_READ+D_BIG+D_BIG_LIM
+   562                              <1> %ifid flat_code
+   563                              <1> flat_code equ $-%$startoftable
+   564                              <1> %endif
+   565                              <1> 	GLOBAL	?fixD%%jloc
+   566                              <1> ?fixD%%jloc:
+   567 000001E4 FFFBCF9A00000000    <1> 	dd	(%2) + ( ( (%3) ^ D_PRESENT ) << 16 ) , (%1)
+   568                                  
+   569                                  flat_data	desc	0, 0xFFFFF, D_DATA+D_WRITE+D_BIG+D_BIG_LIM
+   570                              <1> %ifid flat_data
+   571                              <1> flat_data equ $-%$startoftable
+   572                              <1> %endif
+   573                              <1> 	GLOBAL	?fixD%%jloc
+   574                              <1> ?fixD%%jloc:
+   575 000001EC FFFFCF9200000000    <1> 	dd	(%2) + ( ( (%3) ^ D_PRESENT ) << 16 ) , (%1)
+   576                                  
+   577                                  	end_gdt
+   578                              <1> %$limitoftable	equ	$-%$startoftable-1
+   579                              <1> %pop
+   580                                  
+   581 000001F4 <res 0000000A>          	resb 0x1FE+$$-$
+   582 000001FE 55AA                    	db	0x55, 0xAA		;Standard end of boot sector
+   583                                  ;_____________________________________________________________________________
+   584                                  ;
+   585                                  ;  Build/Install instructions:
+   586                                  ;
+   587                                  ;  *)  NASM -f obj bootf.asm
+   588                                  ;
+   589                                  ;  *)  JLOC bootf.lnk bootf.bin
+   590                                  ;
+   591                                  ;  *)  Start with a formatted floppy.
+   592                                  ;
+   593                                  ;  *)  PARTCOPY bootf.bin 0 3 -f0 0
+   594                                  ;      This step overwrites the JMP at the start of the floppy with a JMP $+3E
+   595                                  ;      With many formatters, that matches the JMP that the formatter put there
+   596                                  ;      and makes no difference.  In most other cases it is safe to overwrite
+   597                                  ;      the JMP.  If you want to preserve a different JMP, change the first
+   598                                  ;      "resb" in bootp.asm to adjust the address of "start".
+   599                                  ;
+   600                                  ;  *)  PARTCOPY bootf.bin 3E 1C2 -f0 3E
+   601                                  ;      This step copies the rest of bootp.bin to the floppy at offset 3E,
+   602                                  ;      skipping the parameters set up by format, so the diskette will still be
+   603                                  ;      useable as a DOS diskette.
+   604                                  ;
+   605                                  ;  *)  Copy some protected mode image to the file C:\KERNEL.BIN.
+   606                                  ;
+   607                                  ;  *)  Boot the floppy.
+   608                                  ;_____________________________________________________________________________
+   609                                  ;
+   610                                  ;   I left out most of the error handling (what do you expect for 1B1 bytes).
+   611                                  ; For errors which it does detect, it just beeps once and hangs.  Errors (and
+   612                                  ; unsupported conditions) which it doesn't even try to detect include:
+   613                                  ;   a)  Not running on a 386 or better
+   614                                  ;   b)  Active partition is not a FAT16 partition
+   615                                  ;   c)  Root directory is more than 608Kb long.
+   616                                  ;   d)  TEST.BIN more than 4Mb long
+   617                                  ;   e)  Total RAM less than 1MB plus actual size of TEST.BIN
+   618                                  ; Errors which it does check for include:
+   619                                  ;   a)  C-bit set after any int 13h
+   620                                  ;   b)  No active partition
+   621                                  ;   c)  No "TEST.BIN" in the root directory
+   622                                  ; 
+   623                                  ;    If this were a partition boot, you probably could leave out the code of
+   624                                  ; reading the MBR, and finding and reading partition boot.  Then you could
+   625                                  ; add a few error checks.  As a test boot used from a floppy, it needs to
+   626                                  ; do that extra work and you just shouldn't use it if the basic conditions
+   627                                  ; aren't valid.  As part of a large multi-boot (another example I hope to
+   628                                  ; document) it could be bigger than one sector.
+   629                                  ;_____________________________________________________________________________
+   630                                  ;
+   631                                  ; {} Documentation connected to specific source code sections:
+   632                                  ;
+   633                                  ;{0}  I wasn't sure what to assume about the CPU state when the BIOS (or
+   634                                  ; earlier boot) transfers control here.  Probably interrupts are disabled and
+   635                                  ; DS=0;  But I didn't assume that.  Assuming that could save a couple bytes
+   636                                  ; of code.
+   637                                  ;
+   638                                  ;{1}  Memory use:
+   639                                  ;  {A} The boot itself is at 0:7C00
+   640                                  ;  {B} The top of the stack is 0:800
+   641                                  ;  {C} The directory and FAT are both read in and accessed starting at 800:0
+   642                                  ;  {D} The image is read in, then copied to 1MB (physical)
+   643                                  ;  {E} The page tables are built at 9C000 physical
+   644                                  ;  {F} The image is mapped to FFF80000 linear
+   645                                  ;  {G} The page tables are mapped to FFFC0000 linear
+   646                                  ;  {H} The first 4Mb is mapped linear = physical
+   647                                  ;
+   648                                  ;{2}  Most of this code runs in "big real mode".  That allows the code to make
+   649                                  ;  int 13h (and other) BIOS calls, but also to access extended memory directly.
+   650                                  ;
+   651                                  ;{3}  I left out most error checks, and just beep once for the errors that are
+   652                                  ; checked.  That makes this code suitable for learning about pmode booting and
+   653                                  ; for test use by pmode kernel developers.  To package with an OS as end-user
+   654                                  ; boot code, you need to either take out some of this code or load from
+   655                                  ; some larger place, and add some real error messages.
+   656                                  ;
+   657                                  ;{4}  One way you might want to reduce the work of the boot is to leave the job
+   658                                  ; of enabling A20 to the kernel startup code:
+   659                                  ;  {A}  Don't enable A20 here.
+   660                                  ;  {B}  Load the image at 2Mb instead of at 1Mb.  (Only odd Megabytes are
+   661                                  ;       unusable when A20 is disabled).
+   662                                  ;  {C}  "shr eax,1" to convert 4Mb to 2Mb.
+   663                                  ; Note that the current version has a minimum memory requirement of 1Mb plus
+   664                                  ; size of the image.  This change would require 2Mb plus the size of the image.
+   665                                  ;
+   666                                  ;{5}  The first version of this code changed the value of segment registers
+   667                                  ; directly after switching to pmode.  It worked on all but one machine that I
+   668                                  ; tested it on (a 386).  On that machine, on the second switch to protected
+   669                                  ; mode, the first segment register loaded got the right selector but a bad
+   670                                  ; descriptor.  I have read that you need a JMP after to switching to pmode, but
+   671                                  ; successfully written MANY programs without that JMP and seen many more
+   672                                  ; written by others.  I guess there is a case in which a delay is required (the
+   673                                  ; usual "flush the prefetch queue" theory doesn't fit the observed facts
+   674                                  ; because I fixed the problem by changing "mov ds,cx" to "push cx", "pop ds";
+   675                                  ; They each take only two bytes in the prefetch queue.
+   676                                  ;   Further testing has shown that on a 386 you may need more than a short
+   677                                  ; instruction worth of delay after switching back to real mode.  Any memory or
+   678                                  ; I/O read is enough, so I rearranged the code to have at least one such read
+   679                                  ; between a change of CR0 bit 0 and a write to an sreg.  The "jmp short $+2"
+   680                                  ; that others recommend would work because it forces a true fetch access (on
+   681                                  ; a 386 at least).  I don't use it because I don't want to waste two bytes in
+   682                                  ; boot code.
+   683                                  ; 
+   684                                  ;
+   685                                  ;{6}  Most of this code doesn't care whether interrupts are enabled or not, so
+   686                                  ; I never enable them after the initial cli.  BIOS's correctly enable
+   687                                  ; interrupts DURING the processing of int 13h, if they need interrupts.
+   688                                  ; Unfortunately, some BIOSs also enable interrupts on exit from int 13h.
+   689                                  ; Interrupts must be disable for the switch to pmode, so another cli is
+   690                                  ; required.
+   691                                  ;
+   692                                  ;{7}  Only the low half of edi is used by read_sectors, so the high half
+   693                                  ; doesn't need to be saved and restored across that use.
+   694                                  ;
+   695                                  ;{8}  I call int 8 (IRQ 0) many times.  This is done in case the code was
+   696                                  ; loaded from floppy.  It tricks the BIOS into turning the floppy motor off.
+   697                                  ; I don't like to start my pmode tests with the floppy motor on.
+   698                                  ;
+   699                                  ;{9}  The first entry in a GDT is never used by the CPU.  A zero selector is
+   700                                  ; defined as being safe to put into a segment register without loading a
+   701                                  ; descriptor from the GDT (You can't access memory through it).  I generally
+   702                                  ; use the first 6 bytes of the GDT as a self pointer.  Once you are used to
+   703                                  ; this convention, it makes code more readable.  The macros in gdt.inc set it
+   704                                  ; up.
+   705                                  ;_____________________________________________________________________________
